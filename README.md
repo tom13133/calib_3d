@@ -59,3 +59,8 @@ roslaunch calib_3d calib_3d.launch
 
 After running the node, it will publish the source points, target points, and calibration result points on RVIZ to show the performance of the module.  
 
+* Result:  
+Red: source points  
+Green: target points  
+White: result points (transformed source points)  
+<img src="https://github.com/tom13133/calib_3d/blob/master/images/calib_result.png" width="800">
