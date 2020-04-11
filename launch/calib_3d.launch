@@ -1,0 +1,14 @@
+<!-- Filename: calib_3d.launch -->
+<!-- Fileinfo: launch calib_3d_node -->
+
+<launch>
+
+    <arg name="node_name" default="calib_3d_node"/>
+    <arg name="pkg_name" value="calib_3d"/>
+    <arg name="local" default="true"/>
+
+    <node name="$(arg node_name)" pkg="$(arg pkg_name)" type="$(arg node_name)" output="screen" required="true">
+        <rosparam  command="load" file="$(find calib_3d)/config/calib_3d.yaml"/>
+    </node>
+
+</launch>

@@ -1,0 +1,6 @@
+initial_guess:
+  translation: [0.15, 0.1, 0]
+  rotation: [180,0,0]
+subsample:
+  portion: 1
+  times: 1
