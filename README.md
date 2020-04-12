@@ -8,6 +8,7 @@ The package is used to compute the transformation between 3D-3D correspondences.
 3. Sophus
 4. PCL
 
+* Installation of Ceres Solver and Sophus: https://hackmd.io/LlT0q5UOQW6YiXNsuGVY4g
 ## Nodes
 1. Node **calib_3d_node**
 
