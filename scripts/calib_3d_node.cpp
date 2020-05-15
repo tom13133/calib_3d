@@ -89,7 +89,6 @@ int main(int argc, char **argv) {
   std::vector<calib_3d::Point3Data> source_data_sample;
   std::vector<calib_3d::Point3Data> target_data_sample;
 
-  std::vector<double> avg_pose = {0, 0, 0 , 0, 0, 0};
   Matrix3 Rx;
   Vector3 euler;
 
@@ -119,47 +118,53 @@ int main(int argc, char **argv) {
     std::vector<float> rotation;
 
     // Start Optimization
-    // Case 1: Optimized by quaternion in rotation part
+    // Case 1: Optimized by quaternion in rotation part (Numeric derivatives)
+    std::vector<double> time_points;
+    std::vector<Pose> result;
+    time_points.push_back(ros::Time::now().toSec());
     final_pose = Find_Transform_3D(source_data_sample,
                                    target_data_sample,
                                    init_guess);
-    // Case 2: Optimized by euler angle in rotation part
+    result.push_back(final_pose);
+    // Case 2: Optimized by euler angle in rotation part (Numeric derivatives)
+    time_points.push_back(ros::Time::now().toSec());
     final_pose = Find_Transform_3D_Euler(source_data_sample,
                                          target_data_sample,
                                          init_guess,
                                          std::vector<int> {});
+    result.push_back(final_pose);
+    // Case 3: Optimized by quaternion in rotation part (Automatic Derivatives)
+    time_points.push_back(ros::Time::now().toSec());
+    final_pose = Find_Transform_3D_Diff(source_data_sample,
+                                        target_data_sample,
+                                        init_guess);
+    result.push_back(final_pose);
+    // Case 4: Optimized by euler angle in rotation (Automatic Derivatives)
+    time_points.push_back(ros::Time::now().toSec());
+    final_pose = Find_Transform_3D_Euler_Diff(source_data_sample,
+                                              target_data_sample,
+                                              init_guess,
+                                              std::vector<int> {});
+    result.push_back(final_pose);
+    time_points.push_back(ros::Time::now().toSec());
 
     Rx = final_pose.unit_quaternion().toRotationMatrix();
     euler = Rx.eulerAngles(2, 1, 0);
 
-    avg_pose[0] = avg_pose[0] * ((iteration-1.)/iteration)
-                  + final_pose.translation().x() * (1./iteration);
-    avg_pose[1] = avg_pose[1] * ((iteration-1.)/iteration)
-                  + final_pose.translation().y() * (1./iteration);
-    avg_pose[2] = avg_pose[2] * ((iteration-1.)/iteration)
-                  + final_pose.translation().z() * (1./iteration);
-    avg_pose[3] = avg_pose[3] * ((iteration-1.)/iteration)
-                  + calib_3d::RadToDeg(euler[0]) * (1./iteration);
-    avg_pose[4] = avg_pose[4] * ((iteration-1.)/iteration)
-                  + calib_3d::RadToDeg(euler[1]) * (1./iteration);
-    avg_pose[5] = avg_pose[5] * ((iteration-1.)/iteration)
-                  + calib_3d::RadToDeg(euler[2]) * (1./iteration);
+    for (int i = 0; i < result.size(); i++) {
+      Rx = result[i].unit_quaternion().toRotationMatrix();
+      euler = Rx.eulerAngles(2, 1, 0);
+      std::cout << "Case " << (i+1)
+                << ": Current tf(deg): ("
+                << result[i].translation().x() << ", "
+                << result[i].translation().y() << ", "
+                << result[i].translation().z() << ", "
+                << calib_3d::RadToDeg(euler[0]) << ", "
+                << calib_3d::RadToDeg(euler[1]) << ", "
+                << calib_3d::RadToDeg(euler[2]) << ") -> ";
 
-    std::cout << "Current tf(deg): ("
-              << avg_pose[0] << ", "
-              << avg_pose[1] << ", "
-              << avg_pose[2] << ", "
-              << avg_pose[3] << ", "
-              << avg_pose[4] << ", "
-              << avg_pose[5] << ")" << std::endl;
-
-    std::cout << "Current tf(rad): ("
-              << avg_pose[0] << ", "
-              << avg_pose[1] << ", "
-              << avg_pose[2] << ", "
-              << calib_3d::DegToRad(avg_pose[3]) << ", "
-              << calib_3d::DegToRad(avg_pose[4]) << ", "
-              << calib_3d::DegToRad(avg_pose[5]) << ")" << std::endl;
+      std::cout << "Cost time: " << time_points[i+1] - time_points[i] << std::endl;
+    }
   }
 
   std::cout << "Done." << std::endl;

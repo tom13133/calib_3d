@@ -36,4 +36,13 @@ Pose Find_Transform_3D_Euler(const std::vector<Point3Data>& source,
                              const std::vector<Point3Data>& target,
                              const SE3& init_guess_transform,
                              const std::vector<int>& constant_indices);
+
+Pose Find_Transform_3D_Diff(const std::vector<Point3Data>& source,
+                            const std::vector<Point3Data>& target,
+                            const SE3& init_guess_transform);
+
+Pose Find_Transform_3D_Euler_Diff(const std::vector<Point3Data>& source,
+                                  const std::vector<Point3Data>& target,
+                                  const SE3& init_guess_transform,
+                                  const std::vector<int>& constant_indices);
 }  // namespace calib_3d
