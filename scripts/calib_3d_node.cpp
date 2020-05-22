@@ -146,6 +146,13 @@ int main(int argc, char **argv) {
                                               init_guess,
                                               std::vector<int> {});
     result.push_back(final_pose);
+    // Case 5: Optimized by quaternion in rotation part with multiple residual
+    // (Automatic Derivatives)
+    time_points.push_back(ros::Time::now().toSec());
+    final_pose = Find_Transform_3D_Diff_resi(source_data_sample,
+                                             target_data_sample,
+                                             init_guess);
+    result.push_back(final_pose);
     time_points.push_back(ros::Time::now().toSec());
 
     Rx = final_pose.unit_quaternion().toRotationMatrix();
@@ -163,7 +170,8 @@ int main(int argc, char **argv) {
                 << calib_3d::RadToDeg(euler[1]) << ", "
                 << calib_3d::RadToDeg(euler[2]) << ") -> ";
 
-      std::cout << "Cost time: " << time_points[i+1] - time_points[i] << std::endl;
+      std::cout << "Cost time: "
+                << time_points[i+1] - time_points[i] << std::endl;
     }
   }
 

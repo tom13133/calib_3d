@@ -48,6 +48,7 @@ class LocalParameterizationSE3 : public ceres::LocalParameterization {
   virtual int LocalSize() const { return Sophus::SE3d::DoF; }
 };  // class LocalParameterizationSE3
 
+
 class ErrorTerm_3D {
  public:
   ErrorTerm_3D(const Point& pt_1, const Point& pt_2)
@@ -395,6 +396,87 @@ Pose Find_Transform_3D_Euler_Diff(const std::vector<Point3Data>& source,
   Matrix3 Rx = pose.unit_quaternion().toRotationMatrix();
   Vector3 euler = Rx.eulerAngles(2, 1, 0);
 
+  std::cout << "init pose: (x, y, z, yaw, pitch, raw)(deg) = ("
+            << init_guess_transform.translation().x() << ", "
+            << init_guess_transform.translation().y() << ", "
+            << init_guess_transform.translation().z() << ", "
+            << RadToDeg(init_euler[0]) << ", " << RadToDeg(init_euler[1])
+            << ", " << RadToDeg(init_euler[2]) << " )" << std::endl;
+  std::cout << "final pose: (x, y, z, yaw, pitch, raw)(deg) = ("
+            << pose.translation().x() << ", " << pose.translation().y() << ", "
+            << pose.translation().z() << ", " << RadToDeg(euler[0]) << ", "
+            << RadToDeg(euler[1]) << ", " << RadToDeg(euler[2]) << " )"
+            << std::endl;
+
+  std::cout << summary.BriefReport() << std::endl;
+
+  return pose;
+}
+
+
+class ErrorTerm_3D_Diff_resi {
+ public:
+  ErrorTerm_3D_Diff_resi(const Point& pt_1, const Point& pt_2)
+      : pt_1_(pt_1), pt_2_(pt_2) {}
+  template <typename T>
+  bool operator()(const T* const pose_ptr, T* residual) const {
+    using Vector3T = Eigen::Matrix<T, 3, 1>;
+    Eigen::Map<Sophus::SE3<T> const> const pose(pose_ptr);
+
+    Vector3T pt_1_transformed = pose * pt_1_.cast<T>();
+    Vector3T pt_2 = pt_2_.cast<T>();
+    residual[0] = ceres::pow((pt_1_transformed[0]-pt_2[0]), 2);
+    residual[1] = ceres::pow((pt_1_transformed[1]-pt_2[1]), 2);
+    residual[2] = ceres::pow((pt_1_transformed[2]-pt_2[2]), 2);
+    return true;
+  }
+
+  static ceres::CostFunction* Create(const Point& pt_1,
+                                     const Point& pt_2) {
+    return new ceres::AutoDiffCostFunction<
+        ErrorTerm_3D_Diff_resi, 3, SE3::num_parameters>(
+        new ErrorTerm_3D_Diff_resi(pt_1, pt_2));
+  }
+
+ private:
+  const Point pt_1_;
+  const Point pt_2_;
+};  // class ErrorTerm_3D_Diff_resi
+
+Pose Find_Transform_3D_Diff_resi(const std::vector<Point3Data>& source,
+                                 const std::vector<Point3Data>& target,
+                                 const SE3& init_guess_transform) {
+  assert(source.size() == target.size() );
+  ceres::Problem problem;
+
+  SE3 pose = init_guess_transform;
+  // Specify local update rule for our parameter
+  problem.AddParameterBlock(pose.data(),
+                            SE3::num_parameters,
+                            new LocalParameterizationSE3);
+
+  for (size_t i = 0; i < source.size(); ++i) {
+    ceres::CostFunction* cost_function =
+        ErrorTerm_3D_Diff_resi::Create(source[i].point_, target[i].point_);
+    problem.AddResidualBlock(cost_function, NULL, pose.data());
+  }
+
+  ceres::Solver::Options options;
+  options.minimizer_progress_to_stdout = true;
+  options.gradient_tolerance = 1e-6;  // * Sophus::Constants<double>::epsilon();
+  options.function_tolerance = 1e-6;  // * Sophus::Constants<double>::epsilon();
+
+  options.linear_solver_type = ceres::DENSE_QR;
+  options.max_linear_solver_iterations = 200;
+  options.max_num_iterations = 1000;
+  ceres::Solver::Summary summary;
+  ceres::Solve(options, &problem, &summary);
+
+  // Print result
+  Matrix3 Rx = pose.unit_quaternion().toRotationMatrix();
+  Vector3 euler = Rx.eulerAngles(2, 1, 0);
+  Matrix3 init_Rx = init_guess_transform.unit_quaternion().toRotationMatrix();
+  Vector3 init_euler = init_Rx.eulerAngles(2, 1, 0);
   std::cout << "init pose: (x, y, z, yaw, pitch, raw)(deg) = ("
             << init_guess_transform.translation().x() << ", "
             << init_guess_transform.translation().y() << ", "
