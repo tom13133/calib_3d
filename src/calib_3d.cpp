@@ -493,4 +493,134 @@ Pose Find_Transform_3D_Diff_resi(const std::vector<Point3Data>& source,
 
   return pose;
 }
+
+class SE3Parameterization : public ceres::LocalParameterization {
+ public:
+  virtual ~SE3Parameterization() {}
+  virtual int GlobalSize() const {return 6;}
+  virtual int LocalSize() const {return 6;}
+
+  virtual bool ComputeJacobian(const double* x, double* jacobian) const {
+    ceres::MatrixRef(jacobian, 6, 6) = ceres::Matrix::Identity(6, 6);
+    return true;
+  }
+
+  virtual bool Plus(const double* x,
+                    const double* delta,
+                    double* x_plus_delta) const {
+    Eigen::Map<const Eigen::Matrix<double, 6, 1>> lie(x);
+    Eigen::Map<const Eigen::Matrix<double, 6, 1>> delta_lie(delta);
+
+    Sophus::SE3d T = Sophus::SE3d::exp(lie);
+    Sophus::SE3d delta_T = Sophus::SE3d::exp(delta_lie);
+    Eigen::Matrix<double, 6, 1> x_plus_delta_lie = (delta_T * T).log();
+
+    for (int i = 0; i < 6; i++)
+      x_plus_delta[i] = x_plus_delta_lie(i, 0);
+
+    return true;
+  }
+};  // SE3Parameterization
+
+class ErrorTerm_3D_Analytic: public ceres::SizedCostFunction<3, 6> {
+ public:
+  ErrorTerm_3D_Analytic(const Point& pt_1, const Point& pt_2)
+                         : pt_1_(pt_1), pt_2_(pt_2) {}
+  virtual ~ErrorTerm_3D_Analytic() {}
+  virtual bool Evaluate(double const* const* parameters,
+                        double* residuals,
+                        double** jacobians) const {
+    Eigen::Map<const Eigen::Matrix<double, 6, 1>> lie(*parameters);
+    Pose pose = Sophus::SE3d::exp(lie);
+    Point pt_1_transformed = pose * pt_1_;
+
+    if (jacobians != NULL && jacobians[0] != NULL) {
+      Eigen::Matrix<double, 3, 6> J;
+      J << 1, 0, 0, 0, +pt_1_transformed.z(), -pt_1_transformed.y(),
+           0, 1, 0, -pt_1_transformed.z(), 0, +pt_1_transformed.x(),
+           0, 0, 1, +pt_1_transformed.y(), -pt_1_transformed.x(), 0;
+
+      for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 6; j++) {
+          jacobians[0][i*6 + j] = J(i, j);
+        }
+      }
+    }
+
+    residuals[0] = pt_1_transformed.x() - pt_2_.x();
+    residuals[1] = pt_1_transformed.y() - pt_2_.y();
+    residuals[2] = pt_1_transformed.z() - pt_2_.z();
+
+    return true;
+  }
+
+ private:
+  const Point pt_1_;
+  const Point pt_2_;
+};  // ErrorTerm_3D_Analytic
+
+Pose Find_Transform_3D_Analytic(const std::vector<Point3Data>& source,
+                                const std::vector<Point3Data>& target,
+                                const SE3& init_guess_transform) {
+  assert(source.size() == target.size() );
+  ceres::Problem problem;
+
+  SE3 pose = init_guess_transform;
+  Sophus::Vector6d se3 = pose.log();
+  // Specify local update rule for our parameter
+
+  double pose_[] = {se3[0], se3[1], se3[2], se3[3], se3[4], se3[5]};
+  problem.AddParameterBlock(pose_, 6, new SE3Parameterization);
+
+  for (size_t i = 0; i < source.size(); ++i) {
+    ceres::CostFunction* cost_function
+               = new ErrorTerm_3D_Analytic(source[i].point_, target[i].point_);
+    problem.AddResidualBlock(cost_function, NULL, pose_);
+  }
+
+  ceres::Solver::Options options;
+  options.minimizer_progress_to_stdout = true;
+  options.gradient_tolerance = 1e-6;  // * Sophus::Constants<double>::epsilon();
+  options.function_tolerance = 1e-6;  // * Sophus::Constants<double>::epsilon();
+
+  options.linear_solver_type = ceres::DENSE_QR;
+  options.max_linear_solver_iterations = 200;
+  options.max_num_iterations = 1000;
+  ceres::Solver::Summary summary;
+  ceres::Solve(options, &problem, &summary);
+
+  se3 << pose_[0], pose_[1], pose_[2], pose_[3], pose_[4], pose_[5];
+  pose = Sophus::SE3d::exp(se3);
+
+  // Print result
+  Matrix3 Rx = pose.unit_quaternion().toRotationMatrix();
+  Vector3 euler = Rx.eulerAngles(2, 1, 0);
+  Matrix3 init_Rx = init_guess_transform.unit_quaternion().toRotationMatrix();
+  Vector3 init_euler = init_Rx.eulerAngles(2, 1, 0);
+  std::cout << "init pose: (x, y, z, yaw, pitch, raw)(deg) = ("
+            << init_guess_transform.translation().x() << ", "
+            << init_guess_transform.translation().y() << ", "
+            << init_guess_transform.translation().z() << ", "
+            << RadToDeg(init_euler[0]) << ", " << RadToDeg(init_euler[1])
+            << ", " << RadToDeg(init_euler[2]) << " )" << std::endl;
+  std::cout << "final pose: (x, y, z, yaw, pitch, raw)(deg) = ("
+            << pose.translation().x() << ", " << pose.translation().y() << ", "
+            << pose.translation().z() << ", " << RadToDeg(euler[0]) << ", "
+            << RadToDeg(euler[1]) << ", " << RadToDeg(euler[2]) << " )"
+            << std::endl;
+
+  std::cout << summary.BriefReport() << std::endl;
+
+  return pose;
+}
+
+double avg_error(const std::vector<Point3Data>& source,
+                 const std::vector<Point3Data>& target,
+                 const SE3& pose) {
+  double sum = 0;
+  for (size_t i = 0; i < source.size(); ++i) {
+    sum += ((pose * source[i].point_) - target[i].point_).norm();
+  }
+  return sum / source.size();
+}
 }  // namespace calib_3d

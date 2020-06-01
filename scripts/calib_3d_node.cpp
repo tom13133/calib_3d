@@ -126,6 +126,7 @@ int main(int argc, char **argv) {
                                    target_data_sample,
                                    init_guess);
     result.push_back(final_pose);
+
     // Case 2: Optimized by euler angle in rotation part (Numeric derivatives)
     time_points.push_back(ros::Time::now().toSec());
     final_pose = Find_Transform_3D_Euler(source_data_sample,
@@ -133,12 +134,14 @@ int main(int argc, char **argv) {
                                          init_guess,
                                          std::vector<int> {});
     result.push_back(final_pose);
+
     // Case 3: Optimized by quaternion in rotation part (Automatic Derivatives)
     time_points.push_back(ros::Time::now().toSec());
     final_pose = Find_Transform_3D_Diff(source_data_sample,
                                         target_data_sample,
                                         init_guess);
     result.push_back(final_pose);
+
     // Case 4: Optimized by euler angle in rotation (Automatic Derivatives)
     time_points.push_back(ros::Time::now().toSec());
     final_pose = Find_Transform_3D_Euler_Diff(source_data_sample,
@@ -146,6 +149,7 @@ int main(int argc, char **argv) {
                                               init_guess,
                                               std::vector<int> {});
     result.push_back(final_pose);
+
     // Case 5: Optimized by quaternion in rotation part with multiple residual
     // (Automatic Derivatives)
     time_points.push_back(ros::Time::now().toSec());
@@ -153,8 +157,16 @@ int main(int argc, char **argv) {
                                              target_data_sample,
                                              init_guess);
     result.push_back(final_pose);
-    time_points.push_back(ros::Time::now().toSec());
 
+    // Case 6: Optimized by quaternion in rotation (Analytics Derivatives)
+    time_points.push_back(ros::Time::now().toSec());
+    final_pose = Find_Transform_3D_Analytic(source_data_sample,
+                                              target_data_sample,
+                                              init_guess);
+    result.push_back(final_pose);
+
+
+    time_points.push_back(ros::Time::now().toSec());
     Rx = final_pose.unit_quaternion().toRotationMatrix();
     euler = Rx.eulerAngles(2, 1, 0);
 
@@ -171,7 +183,9 @@ int main(int argc, char **argv) {
                 << calib_3d::RadToDeg(euler[2]) << ") -> ";
 
       std::cout << "Cost time: "
-                << time_points[i+1] - time_points[i] << std::endl;
+                << time_points[i+1] - time_points[i]
+                << ", Avg error:"
+                << avg_error(source_data_sample, target_data_sample, result[i]) << std::endl;
     }
   }
 
