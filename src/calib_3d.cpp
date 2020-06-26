@@ -569,13 +569,12 @@ Pose Find_Transform_3D_Analytic(const std::vector<Point3Data>& source,
   Sophus::Vector6d se3 = pose.log();
   // Specify local update rule for our parameter
 
-  double pose_[] = {se3[0], se3[1], se3[2], se3[3], se3[4], se3[5]};
-  problem.AddParameterBlock(pose_, 6, new SE3Parameterization);
+  problem.AddParameterBlock(se3.data(), 6, new SE3Parameterization);
 
   for (size_t i = 0; i < source.size(); ++i) {
     ceres::CostFunction* cost_function
                = new ErrorTerm_3D_Analytic(source[i].point_, target[i].point_);
-    problem.AddResidualBlock(cost_function, NULL, pose_);
+    problem.AddResidualBlock(cost_function, NULL, se3.data());
   }
 
   ceres::Solver::Options options;
@@ -589,7 +588,6 @@ Pose Find_Transform_3D_Analytic(const std::vector<Point3Data>& source,
   ceres::Solver::Summary summary;
   ceres::Solve(options, &problem, &summary);
 
-  se3 << pose_[0], pose_[1], pose_[2], pose_[3], pose_[4], pose_[5];
   pose = Sophus::SE3d::exp(se3);
 
   // Print result
